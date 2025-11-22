@@ -1,22 +1,9 @@
 #!/usr/bin/env python3
 """
-# Single PUT to node 1
---nodes 127.0.0.1:8001,127.0.0.1:8002,127.0.0.1:8003 --node 1 -- cmd "PUT color blue"
-
-# GET from node 2
---nodes 127.0.0.1:8001,127.0.0.1:8002,127.0.0.1:8003 --node 2 -- cmd "GET color"
-
-# Race two writers (great for no-mutex demo)
---nodes 127.0.0.1:8001,127.0.0.1:8002,127.0.0.1:8003 -- race "PUT color blue" "PUT color red"
-
-# Read the key from ALL nodes after the race
---nodes 127.0.0.1:8001,127.0.0.1:8002,127.0.0.1:8003 -- getall color
-
-# Quick benchmark (mix of GET/PUT) to random nodes
---nodes 127.0.0.1:8001,127.0.0.1:8002,127.0.0.1:8003 -- bench --ops 50 --key color --put-ratio 0.3
-
-# Interactive REPL 
---nodes 127.0.0.1:8001,127.0.0.1:8002,127.0.0.1:8003 -- repl
+MODIFIED FOR SPECIFIC IPs:
+Node 1: 192.168.122.160:5001
+Node 2: 192.168.122.188:5002
+Node 3: 192.168.122.161:5003
 """
 
 import argparse, socket, time, threading, random, statistics, sys
@@ -45,6 +32,7 @@ def action_race(nodes: List[Tuple[str,int]], cmd1: str, cmd2: str):
     if len(nodes) < 2:
         print("Need at least 2 nodes for a race.")
         return
+    # Use Node 2 and Node 3 for racing (as per common scenario) or just first two
     i1, i2 = 0, 1
     host1, port1 = nodes[i1]
     host2, port2 = nodes[i2]
@@ -64,8 +52,11 @@ def action_race(nodes: List[Tuple[str,int]], cmd1: str, cmd2: str):
 
 def action_getall(nodes: List[Tuple[str,int]], key: str):
     for (h,p) in nodes:
-        out, dt = send_cmd(h, p, f"GET {key}")
-        print(f"[{h}:{p}] GET {key} -> {out} ({dt:.2f} ms)")
+        try:
+            out, dt = send_cmd(h, p, f"GET {key}")
+            print(f"[{h}:{p}] GET {key} -> {out} ({dt:.2f} ms)")
+        except Exception as e:
+            print(f"[{h}:{p}] GET {key} -> ERROR {e}")
 
 
 def action_bench(nodes: List[Tuple[str,int]], ops: int, key: str, put_ratio: float):
@@ -74,14 +65,17 @@ def action_bench(nodes: List[Tuple[str,int]], ops: int, key: str, put_ratio: flo
     for i in range(ops):
         h,p = random.choice(nodes)
         do_put = random.random() < put_ratio
-        if do_put:
-            val = f"v{i}"
-            out, dt = send_cmd(h, p, f"PUT {key} {val}")
-            puts += 1
-        else:
-            out, dt = send_cmd(h, p, f"GET {key}")
-            gets += 1
-        lat.append(dt)
+        try:
+            if do_put:
+                val = f"v{i}"
+                out, dt = send_cmd(h, p, f"PUT {key} {val}")
+                puts += 1
+            else:
+                out, dt = send_cmd(h, p, f"GET {key}")
+                gets += 1
+            lat.append(dt)
+        except:
+            pass
     if lat:
         print(f"ops={ops} puts={puts} gets={gets} avg={statistics.mean(lat):.2f} ms p95={statistics.quantiles(lat, n=20)[18]:.2f} ms max={max(lat):.2f} ms")
 
@@ -118,8 +112,11 @@ def action_repl(nodes: List[Tuple[str,int]]):
         if line.startswith('cmd '):
             cmd = line[4:]
             h,p = nodes[cur]
-            out, dt = send_cmd(h, p, cmd)
-            print(f"[{h}:{p}] {cmd} -> {out} ({dt:.2f} ms)")
+            try:
+                out, dt = send_cmd(h, p, cmd)
+                print(f"[{h}:{p}] {cmd} -> {out} ({dt:.2f} ms)")
+            except Exception as e:
+                 print(f"Error: {e}")
             continue
         if line.startswith('getall '):
             key = line.split(' ',1)[1]
@@ -144,8 +141,12 @@ def parse_nodes(s: str) -> List[Tuple[str,int]]:
     return out
 
 if __name__ == '__main__':
+    # DEFAULT IPs Updated based on your request
+    MY_NODES = "192.168.122.160:5001,192.168.122.188:5002,192.168.122.161:5003"
+
     ap = argparse.ArgumentParser(description='kv client')
-    ap.add_argument('--nodes', required=True, help='comma list of host:port')
+    # Changed required=True to False, and added default
+    ap.add_argument('--nodes', required=False, default=MY_NODES, help='comma list of host:port')
 
     sub = ap.add_subparsers(dest='mode', required=True)
 
@@ -184,4 +185,3 @@ if __name__ == '__main__':
         action_bench(nodes, args.ops, args.key, args.put_ratio)
     elif args.mode == 'repl':
         action_repl(nodes)
-
