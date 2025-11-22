@@ -1,4 +1,4 @@
-python3 kv_fixed.py \
+python3 kv.py \
   --id 1 \
   --tcp 5001 --udp 6001 \
   --host 192.168.122.160 \
